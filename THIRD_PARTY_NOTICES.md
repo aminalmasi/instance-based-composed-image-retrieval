@@ -10,3 +10,7 @@ third-party source code.
 - RZEnEmbed model weights and inference code: original model and repository licenses apply.
 
 Users are responsible for reviewing the applicable terms before downloading these resources.
+
+The pipeline overview in `docs/assets/final_pipeline.png` contains example images from the ICIR
+benchmark. Those images remain under the ICIR dataset terms and are included only to document the
+research method.
