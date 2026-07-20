@@ -1,5 +1,5 @@
 {
-  "release": "v0.1.0-checkpoints",
+  "release": "v0.1.0",
   "backbone": "google/siglip-so400m-patch14-384",
   "training_dataset": "ILIAS",
   "training_split": "all_train",
