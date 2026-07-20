@@ -1,0 +1,29 @@
+{
+  "release": "v0.1.0-checkpoints",
+  "backbone": "google/siglip-so400m-patch14-384",
+  "training_dataset": "ILIAS",
+  "training_split": "all_train",
+  "assets": [
+    {
+      "filename": "icir_exact_line2_instance_descriptors.csv",
+      "artifact_type": "generated_descriptor_table",
+      "sha256": "2e836ef5effe1f57b32bfc4a36407a88f51ee0679af24b1eacce0e533c4ffbc6",
+      "size_bytes": 441709,
+      "license_note": "Derived from ICIR; distribute under terms compatible with the ICIR dataset license."
+    },
+    {
+      "filename": "siglip1_ilias_alltrain_infonce.pt",
+      "objective": "local_infonce",
+      "sha256": "26998d893c40601aefb0aaf9f2d7e4ab5e002ca06657f39d88795ef7c166b7af",
+      "size_bytes": 15945789,
+      "configuration": "tau=0.05,batch_size=64,learning_rate=3e-4,k_negatives=8,uniform_negatives"
+    },
+    {
+      "filename": "siglip1_ilias_alltrain_margin.pt",
+      "objective": "multi_negative_margin",
+      "sha256": "b6b40b0824367fd12afb3a566874e2ec32d33faf939968758f766322d8907eb2",
+      "size_bytes": 15945853,
+      "configuration": "margin=0.2,batch_size=64,learning_rate=3e-4,k_negatives=8,reduction=top_half"
+    }
+  ]
+}

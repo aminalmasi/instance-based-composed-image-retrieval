@@ -1,0 +1,23 @@
+{
+  "metric_profile": "thesis",
+  "candidate_protocol": "instance_specific_positives_plus_hard_negatives",
+  "query_count": 1883,
+  "top_k": 100,
+  "targets": {
+    "first_stage": {
+      "mAP@100": 59.64,
+      "Macro-mAP@100": 60.24,
+      "Recall@100": 93.08
+    },
+    "route_a": {
+      "mAP@100": 66.05,
+      "Macro-mAP@100": 64.14,
+      "Recall@100": 93.08
+    },
+    "route_b": {
+      "mAP@100": 66.42,
+      "Macro-mAP@100": 65.65,
+      "Recall@100": 93.08
+    }
+  }
+}

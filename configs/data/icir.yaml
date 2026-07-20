@@ -1,0 +1,7 @@
+dataset: icir
+root: ${ICIR_DATA_ROOT}
+candidate_protocol: instance_specific_positives_plus_hard_negatives
+query_metadata: query_files.csv
+database_metadata: database_files.csv
+top_k: 100
+metric_profile: thesis

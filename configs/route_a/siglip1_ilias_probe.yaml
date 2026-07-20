@@ -1,0 +1,18 @@
+name: ilias_siglip1_linear_probe_reranker
+shortlist: first_stage_top_100
+image_branch:
+  backbone: google/siglip-so400m-patch14-384
+  adapter: linear_projection
+  checkpoint_release_asset: siglip1_ilias_alltrain_infonce.pt
+  centering: none
+text_branch:
+  backbone: google/siglip-so400m-patch14-384
+  adapter: frozen
+  contextualization: generic_subject_mean
+fusion:
+  operation: product
+  variables:
+    - siglip2_image
+    - siglip2_text
+    - siglip1_probe_image
+    - siglip1_context_text

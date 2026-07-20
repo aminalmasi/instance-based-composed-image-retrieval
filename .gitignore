@@ -1,0 +1,36 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Local datasets, embeddings, model weights, and experiment outputs.
+/data/
+/features/
+/outputs/
+/results/
+/artifacts/
+/wandb/
+*.npy
+*.npz
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+
+# Keep lightweight release metadata and checkpoint documentation.
+!checkpoints/README.md
+!tests/fixtures/**/*.npz
+
+.env
+.env.*
+!.env.example
+.local_*
+.idea/
+.vscode/
+.DS_Store

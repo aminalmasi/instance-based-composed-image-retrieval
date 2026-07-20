@@ -1,0 +1,7 @@
+dataset: ilias
+root: ${ILIAS_DATA_ROOT}
+split: all_train
+positivity_field: siglip2_400_positivity
+positive_rank_field: siglip2_rank
+top_positive_count: 3
+candidate_protocol: query_specific_hard_negatives

@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "instance-cir"
+version = "0.1.0"
+description = "Instance-based composed image retrieval with identity-aware two-stage reranking"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "Mohammadamin Almasi Kolor" },
+]
+keywords = [
+  "composed-image-retrieval",
+  "instance-retrieval",
+  "vision-language-models",
+  "reranking",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "pyyaml>=6.0",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+torch = ["torch>=2.2"]
+models = [
+  "torch>=2.2",
+  "transformers>=4.51",
+  "accelerate>=1.2",
+  "safetensors>=0.4",
+  "pillow>=10.0",
+]
+dev = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.7",
+]
+
+[project.scripts]
+instance-cir = "instance_cir.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+exclude = ["build"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

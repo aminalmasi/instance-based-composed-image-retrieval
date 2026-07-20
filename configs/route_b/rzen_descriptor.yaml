@@ -1,0 +1,23 @@
+name: descriptor_guided_rzen_reranker
+shortlist: first_stage_top_100
+descriptor:
+  source: generated_instance_descriptor
+  forbid_modification_leakage: true
+model:
+  id: qihoo360/RzenEmbed
+  revision: main
+  attention_backend: sdpa
+  adaptive_batch_size: true
+  oom_backoff: true
+instruction: >-
+  Represent the candidate image for exact instance-level retrieval. Use the provided instance
+  descriptor as an attention guide for the literal identity. Prioritize discriminative identity
+  cues and ignore background, style, lighting, pose, and state changes unless they help identify
+  the instance. Instance descriptor:
+fusion:
+  operation: product
+  variables:
+    - siglip2_image
+    - siglip2_text
+    - rzen_image
+    - rzen_text

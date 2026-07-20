@@ -1,0 +1,20 @@
+name: siglip2_so400m_centered_contextualized_product
+model:
+  id: google/siglip2-so400m-patch16-384
+  revision: main
+  embedding_dim: 1152
+  normalize_encoder_outputs: true
+image_branch:
+  centering: leave_one_instance_out
+  renormalize_after_centering: false
+text_branch:
+  contextualization: generic_subject_mean
+  corpus: corpora/generic_subjects.csv
+  centering: corpus_embedding_mean
+  renormalize_after_centering: false
+fusion:
+  operation: product
+  clip_negative_scores: true
+retrieval:
+  top_k: 100
+  stable_ties: true

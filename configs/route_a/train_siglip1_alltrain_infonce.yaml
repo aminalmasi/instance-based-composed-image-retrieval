@@ -1,0 +1,24 @@
+name: siglip1_ilias_alltrain_infonce
+seed: 42
+device: cuda
+supervision_csv: ../../data/ilias_supervision.csv
+embedding_banks:
+  queries: ../../features/ilias/siglip1/query.npy
+  positives: ../../features/ilias/siglip1/positives.npy
+  distractors: ../../features/ilias/siglip1/distractors.npy
+output_dir: outputs/siglip1_ilias_alltrain_infonce
+top_positives: 3
+model:
+  output_dim: 1152
+  use_layernorm: false
+loss:
+  name: local_infonce
+  temperature: 0.05
+  k_negatives: 8
+  negative_sampling: uniform
+optimizer:
+  batch_size: 64
+  epochs: 40
+  learning_rate: 0.0003
+  weight_decay: 0.0001
+  gradient_clip_norm: 1.0
