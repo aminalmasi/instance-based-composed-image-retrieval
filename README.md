@@ -8,6 +8,7 @@
 [![License](https://img.shields.io/badge/Code-Apache--2.0-6F4A8E?style=flat-square)](LICENSE)
 [![Release](https://img.shields.io/badge/Release-v0.1.0-C45A16?style=flat-square)](https://github.com/aminalmasi/instance-based-composed-image-retrieval/releases/tag/v0.1.0)
 [![Tests](https://img.shields.io/badge/Tests-9%20passing-238B57?style=flat-square)](tests)
+[![Project page](https://img.shields.io/badge/Project%20page-live-15181E?style=flat-square)](https://aminalmasi.github.io/instance-based-composed-image-retrieval/)
 
 Implementation of the two-stage framework developed for the master's thesis<br>
 **Instance-Based Composed Image Retrieval with Vision-Language Models**.

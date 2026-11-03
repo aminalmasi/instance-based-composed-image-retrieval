@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Instance-Level Composed Retrieval</title>
+<meta name="description" content="Master's thesis, University of Padova: retrieving the same literal object after a text edit, with a SigLIP2 first stage and descriptor-guided RZEn reranking.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Instance-Level Composed Image Retrieval">
+<meta property="og:description" content="Master's thesis, University of Padova: find the exact same object after a text edit. +6.8 mAP@100 over the strongest baseline (59.64 to 66.42).">
+<meta property="og:url" content="https://aminalmasi.github.io/instance-based-composed-image-retrieval/">
+<meta property="og:image" content="https://aminalmasi.github.io/instance-based-composed-image-retrieval/media/ex/2cbc8e442bec.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anybody:ital,wdth,wght@0,50..150,300..900;1,50..150,300..900&family=IBM+Plex+Mono:wght@400;500&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<style>
+/* Layout: one reading column (~68ch) with figures and the example explorer widening past it, same frame as the text_layover page.
+   Color: the two halves of every query carry the page: identity (the photo) in blue, the modification (the text) in amber,
+   the reranked result in violet; green ticks and red crosses are the thesis figures' own positive/negative legend. */
+:root {
+  color-scheme: light;
+  --paper: #f1f2f5;
+  --surface: #ffffff;
+  --ink: #15181e;
+  --muted: #5a616e;
+  --rule: #d9dce2;
+  --grid: #e7e9ed;
+  --idn: #2456c9;
+  --mod: #b4530f;
+  --fin: #7a3db8;
+  --hit: #1f8a4c;
+  --miss: #c4402f;
+  --neutral: #8a909b;
+  --idn-soft: #e2e9fa;
+  --mod-soft: #f7e5d7;
+  --fin-soft: #eee4f8;
+  --display: "Anybody", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --body: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --col: 68ch;
+  --wide: 1120px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #111318;
+    --surface: #171a20;
+    --ink: #e6e8ec;
+    --muted: #9aa1ad;
+    --rule: #2a2f38;
+    --grid: #22262e;
+    --idn: #5b88ea;
+    --mod: #d0793a;
+    --fin: #a477de;
+    --hit: #37a062;
+    --miss: #e0644f;
+    --neutral: #80868f;
+    --idn-soft: #1b2540;
+    --mod-soft: #39251a;
+    --fin-soft: #2a2140;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #111318;
+  --surface: #171a20;
+  --ink: #e6e8ec;
+  --muted: #9aa1ad;
+  --rule: #2a2f38;
+  --grid: #22262e;
+  --idn: #5b88ea;
+  --mod: #d0793a;
+  --fin: #a477de;
+  --hit: #37a062;
+  --miss: #e0644f;
+  --neutral: #80868f;
+  --idn-soft: #1b2540;
+  --mod-soft: #39251a;
+  --fin-soft: #2a2140;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 17px/1.62 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: inherit; text-decoration-color: var(--fin); text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--fin); outline-offset: 3px; }
+code, .mono { font-family: var(--mono); font-size: 0.86em; }
+code { background: var(--surface); border: 1px solid var(--rule); border-radius: 4px; padding: 0 5px; }
+.idn-t { color: var(--idn); }
+.mod-t { color: var(--mod); }
+.fin-t { color: var(--fin); }
+
+/* top bar */
+.top {
+  max-width: var(--wide); margin: 0 auto; padding-block: 18px 0;
+  display: flex; flex-wrap: wrap; gap: 8px 22px; align-items: baseline; justify-content: space-between;
+  font: 500 14px/1.4 var(--body);
+}
+.top .name { font-family: var(--mono); font-weight: 500; letter-spacing: 0.02em; }
+.top nav { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); }
+.top nav a { text-decoration: none; }
+.top nav a:hover { color: var(--ink); }
+
+/* hero */
+.hero {
+  max-width: var(--wide); margin: 0 auto; padding-block: 44px 30px;
+  display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr); gap: 44px; align-items: center;
+}
+.eyebrow { font: 500 12.5px/1.3 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 0 0 14px; }
+h1 {
+  font-family: var(--display); font-size: clamp(2.5rem, 5.6vw, 4.5rem); line-height: 0.98;
+  font-weight: 760; font-stretch: 78%; letter-spacing: -0.01em; margin: 0 0 22px; text-wrap: balance;
+}
+h1 .a { color: var(--idn); display: block; }
+h1 .b { color: var(--mod); display: block; font-weight: 430; font-stretch: 132%; font-style: italic; letter-spacing: -0.02em; }
+.lede { font-size: 1.14rem; line-height: 1.55; margin: 0 0 26px; max-width: 48ch; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 26px; margin: 0; }
+.stats div { border-top: 2px solid var(--ink); padding-top: 8px; }
+.stats dt { font: 700 2.1rem/1 var(--display); font-stretch: 82%; font-variant-numeric: tabular-nums; }
+.stats dd { margin: 6px 0 0; color: var(--muted); font-size: 0.9rem; line-height: 1.4; }
+
+/* hero comparison: baseline vs this thesis on one 0 to 100 scale */
+.vs { margin: 0 0 24px; max-width: 36rem; }
+.vs-h { font: 600 0.98rem/1.3 var(--body); margin: 0 0 10px; }
+.vs-h span { display: block; font: 400 0.86rem/1.4 var(--body); color: var(--muted); margin-top: 3px; }
+.vs-row { display: grid; grid-template-columns: 10.5rem minmax(0, 1fr) 4.6rem; gap: 12px; align-items: center; padding: 7px 0; }
+.vs-row .who { font: 600 0.96rem/1.25 var(--body); }
+.vs-row .who small { display: block; color: var(--muted); font-size: 0.8rem; font-weight: 400; margin-top: 2px; }
+.vs-row .track { position: relative; height: 28px; background: var(--grid); border-radius: 0 4px 4px 0; }
+.vs-row .track i, .vs-row .track em { position: absolute; top: 0; bottom: 0; }
+.vs-row .track i { left: 0; background: var(--neutral); border-radius: 0 2px 2px 0; }
+.vs-row .track em { background: var(--fin); border-radius: 0 4px 4px 0; border-left: 2px solid var(--surface); }
+.vs-row b { font: 700 1.8rem/1 var(--display); font-stretch: 82%; font-variant-numeric: tabular-nums; text-align: right; }
+.vs-row.ours b { color: var(--fin); }
+.vs-scale { display: grid; grid-template-columns: 10.5rem minmax(0, 1fr) 4.6rem; gap: 12px; font: 400 11.5px/1 var(--mono); color: var(--muted); }
+.vs-scale span { display: flex; justify-content: space-between; }
+
+/* hero query card */
+.qcard { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; box-shadow: 0 18px 40px -30px rgba(0,0,0,.5); }
+.qrow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.qimg { border-radius: 5px; overflow: hidden; border: 2px solid var(--idn); background: var(--grid); }
+.qimg img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.qlabel { font: 500 11.5px/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+.chip { display: inline-block; font: 500 0.98rem/1.35 var(--body); color: var(--mod); background: var(--mod-soft); border-radius: 4px; padding: 6px 10px; }
+.chip::before { content: "+ "; font-family: var(--mono); }
+.qres { margin-top: 16px; }
+.qres .tiles { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.qcap { font-size: 0.86rem; color: var(--muted); margin: 10px 0 0; }
+
+/* sections */
+section { max-width: var(--wide); margin: 0 auto; padding-block: 46px 10px; }
+section + section { border-top: 1px solid var(--rule); }
+h2 { font-family: var(--display); font-size: clamp(1.9rem, 3.6vw, 2.6rem); line-height: 1.04; font-weight: 720; font-stretch: 80%; margin: 0 0 14px; text-wrap: balance; }
+h3 { font: 600 1.22rem/1.3 var(--body); margin: 0 0 8px; text-wrap: balance; }
+p { margin: 0 0 14px; }
+.col { max-width: var(--col); }
+.muted { color: var(--muted); }
+ul.plain { padding-left: 1.1em; margin: 0 0 14px; }
+ul.plain li { margin: 5px 0; }
+
+/* the two-question grid */
+.verdicts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 24px 0 10px; }
+.verdict { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 16px 16px 12px; }
+.verdict .checks { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; font: 500 0.88rem/1.3 var(--mono); }
+.verdict .checks span { display: flex; gap: 8px; align-items: center; }
+.verdict p { font-size: 0.95rem; color: var(--muted); margin: 0; }
+.verdict h3 { font-size: 1.05rem; }
+.mk { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font: 700 11px/1 var(--body); color: #fff; flex: none; }
+.mk.y { background: var(--hit); }
+.mk.n { background: var(--miss); }
+
+/* bar charts (HTML, one linear scale per chart) */
+.chart { --lab: 15.5rem; --g: 12px; margin: 22px 0 8px; max-width: 900px; }
+.chart .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.88rem; color: var(--muted); margin: 0 0 10px; }
+.chart .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.bars { position: relative; display: grid; gap: 4px; }
+.bars .grp { font: 500 12px/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); padding: 12px 0 4px; }
+.bars .grp:first-child { padding-top: 0; }
+.bar { display: grid; grid-template-columns: var(--lab) minmax(0, 1fr) 4.2rem; gap: var(--g); align-items: center; min-height: 30px; }
+.bar .l { font-size: 0.93rem; line-height: 1.25; }
+.bar .l small { display: block; color: var(--muted); font-size: 0.8rem; }
+.bar .t { position: relative; height: 22px; background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px); background-size: var(--tick) 100%; border-left: 1px solid var(--muted); }
+.bar .f { position: absolute; left: 0; top: 3px; bottom: 3px; border-radius: 0 4px 4px 0; background: var(--c, var(--idn)); }
+.bar .v { font: 500 0.95rem/1 var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.bar.hl .l { font-weight: 600; }
+.axis { display: grid; grid-template-columns: var(--lab) minmax(0, 1fr) 4.2rem; gap: var(--g); margin-top: 4px; }
+.axis .ticks { position: relative; height: 18px; font: 400 11.5px/1 var(--mono); color: var(--muted); }
+.axis .ticks span { position: absolute; transform: translateX(-50%); top: 4px; }
+.axis .cap { grid-column: 2; font: 400 11.5px/1.3 var(--mono); color: var(--muted); }
+.ref { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px dashed var(--neutral); pointer-events: none; }
+.ref span { position: absolute; top: -2px; left: 6px; font: 500 11px/1.2 var(--mono); color: var(--muted); white-space: nowrap; background: var(--paper); padding: 1px 4px; }
+
+/* dumbbell */
+.dumb .t { background-color: transparent; }
+.dumb .seg { position: absolute; top: 50%; height: 2px; background: var(--rule); transform: translateY(-50%); }
+.dumb .dot { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--paper); }
+.dumb .v { width: auto; }
+.dumb .bar { grid-template-columns: 7rem minmax(0, 1fr) 7.6rem; }
+.dumb .axis { grid-template-columns: 7rem minmax(0, 1fr) 7.6rem; }
+
+/* stacked outcome bar */
+.stack { display: flex; gap: 2px; height: 30px; margin: 18px 0 10px; max-width: 900px; }
+.stack div { border-radius: 2px; }
+.stack div:first-child { border-radius: 4px 2px 2px 4px; }
+.stack div:last-child { border-radius: 2px 4px 4px 2px; }
+.stackkey { display: flex; flex-wrap: wrap; gap: 8px 26px; font-size: 0.93rem; max-width: 900px; }
+.stackkey b { font: 600 1.05rem/1 var(--mono); font-variant-numeric: tabular-nums; margin-right: 4px; }
+.stackkey i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+/* tables */
+.tablewrap { overflow-x: auto; margin: 20px 0 8px; }
+table { border-collapse: collapse; font-size: 0.93rem; min-width: 640px; width: 100%; max-width: 980px; }
+th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 500 11.5px/1.3 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+td small { display: block; color: var(--muted); font-size: 0.8rem; }
+tr.best td { font-weight: 600; }
+tr.sub td { font: 500 12px/1.3 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding-top: 18px; }
+.pos { color: var(--hit); }
+
+/* figures */
+figure { margin: 24px 0; }
+figcaption { font-size: 0.92rem; color: var(--muted); margin-top: 10px; max-width: 82ch; }
+figcaption b { color: var(--ink); font-weight: 600; }
+.diagram { overflow-x: auto; }
+.diagram svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+
+/* stage blocks */
+.stages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; margin: 26px 0 10px; }
+.stage { border-top: 3px solid var(--c); padding-top: 12px; }
+.stage .tag { font: 500 12px/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--c); margin: 0 0 6px; }
+.stage p, .stage li { font-size: 0.96rem; }
+.formula { font: 500 0.95rem/1.6 var(--mono); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; overflow-x: auto; white-space: nowrap; margin: 6px 0 14px; }
+.formula sub, .formula sup { font-size: 0.72em; }
+blockquote { margin: 10px 0 14px; padding: 10px 14px; border-left: 3px solid var(--fin); background: var(--fin-soft); font-size: 0.93rem; border-radius: 0 6px 6px 0; }
+.note { border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; background: var(--surface); font-size: 0.94rem; max-width: 84ch; margin: 16px 0; }
+.note b { font-weight: 600; }
+
+/* example explorer */
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 18px; }
+.tab { font: 500 0.9rem/1.2 var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 999px; padding: 7px 12px; cursor: pointer; display: inline-flex; gap: 8px; align-items: center; }
+.tab:hover { border-color: var(--muted); }
+.tab[aria-selected="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.tab .d { font: 500 0.78rem/1 var(--mono); font-variant-numeric: tabular-nums; }
+.tab .d.up { color: var(--hit); }
+.tab .d.down { color: var(--miss); }
+.tab[aria-selected="true"] .d { color: inherit; opacity: 0.8; }
+.tabsep { width: 1px; background: var(--rule); margin: 0 4px; }
+.panel { display: grid; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: 26px; align-items: start; }
+.panel .query img { width: 100%; border-radius: 5px; border: 2px solid var(--idn); background: var(--grid); }
+.panel .query .chip { margin-top: 10px; }
+.desc { font-size: 0.88rem; color: var(--muted); margin: 12px 0 0; }
+.desc q { color: var(--ink); quotes: "\201C" "\201D"; }
+.ranks { display: grid; gap: 18px; }
+.rankhead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; align-items: baseline; margin: 0 0 8px; }
+.rankhead h3 { font-size: 1rem; margin: 0; }
+.rankhead .ap { font: 500 0.9rem/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--muted); }
+.rankhead .ap b { color: var(--ink); font-weight: 600; }
+.tiles { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; }
+.tile { position: relative; border-radius: 4px; overflow: hidden; background: var(--grid); outline: 3px solid var(--miss); outline-offset: -3px; }
+.tile.pos { outline-color: var(--hit); }
+.tile img { width: 100%; aspect-ratio: 1; object-fit: cover; }
+.tile .r { position: absolute; left: 3px; top: 3px; font: 600 10px/1 var(--mono); background: rgba(15,17,20,.75); color: #fff; padding: 2px 4px; border-radius: 2px; }
+.tile .m { position: absolute; right: 3px; bottom: 3px; }
+.exnote { font-size: 0.93rem; margin: 6px 0 0; max-width: 80ch; }
+.credit { font-size: 0.84rem; color: var(--muted); margin-top: 18px; }
+
+/* lessons */
+.lessons { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 34px; margin: 18px 0; }
+.lesson { padding: 12px 0; border-top: 1px solid var(--rule); }
+.lesson h3 { font-size: 1rem; margin: 0 0 4px; }
+.lesson p { font-size: 0.94rem; color: var(--muted); margin: 0; }
+
+/* thesis + code */
+.cta { display: flex; flex-wrap: wrap; gap: 12px; margin: 18px 0 20px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; font: 600 0.95rem/1 var(--body); text-decoration: none; padding: 12px 16px; border-radius: 6px; border: 1px solid var(--ink); }
+.btn.primary { background: var(--ink); color: var(--paper); }
+.btn small { font: 400 0.8rem/1 var(--mono); opacity: 0.75; }
+.meta { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 6px 16px; font-size: 0.94rem; max-width: 80ch; margin: 0 0 18px; }
+.meta dt { color: var(--muted); }
+.meta dd { margin: 0; }
+pre.bib { font: 400 0.82rem/1.5 var(--mono); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; overflow-x: auto; max-width: 84ch; }
+
+footer { max-width: var(--wide); margin: 30px auto 0; padding-block: 22px 40px; border-top: 1px solid var(--rule); font-size: 0.86rem; color: var(--muted); }
+footer p { max-width: 100ch; }
+
+/* tooltip */
+.tip { position: fixed; z-index: 20; pointer-events: none; background: var(--ink); color: var(--paper); font: 500 12.5px/1.35 var(--body); padding: 7px 9px; border-radius: 4px; max-width: 260px; }
+
+@media (max-width: 900px) {
+  .hero { grid-template-columns: minmax(0, 1fr); gap: 30px; padding-block: 30px 24px; }
+  .stages, .verdicts { grid-template-columns: minmax(0, 1fr); }
+  .lessons { grid-template-columns: minmax(0, 1fr); }
+  .panel { grid-template-columns: minmax(0, 1fr); }
+  .panel .query { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px 16px; align-items: start; }
+  .panel .query .chip { margin-top: 0; }
+  .chart { --lab: 10.5rem; }
+}
+@media (max-width: 620px) {
+  body { font-size: 16px; }
+  .tiles { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .chart { --lab: 7.6rem; --g: 8px; }
+  .vs-row, .vs-scale { grid-template-columns: 6.6rem minmax(0, 1fr) 3.9rem; gap: 8px; }
+  .vs-row b { font-size: 1.5rem; }
+  .bar .l { font-size: 0.84rem; }
+  .bar .l small { display: none; }
+  .dumb .bar, .dumb .axis { grid-template-columns: 5.4rem minmax(0, 1fr) 6.6rem; }
+  .meta { grid-template-columns: minmax(0, 1fr); gap: 0 0; }
+  .meta dd { margin-bottom: 8px; }
+  .panel .query { grid-template-columns: 110px minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tile img { transition: opacity .2s ease; }
+}
+
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="name" href="https://aminalmasi.github.io/" style="text-decoration:none" title="All projects">aminalmasi / instance_cir</a>
+  <nav aria-label="Sections">
+    <a href="#task">Task</a>
+    <a href="#system">System</a>
+    <a href="#examples">Examples</a>
+    <a href="#results">Results</a>
+    <a href="#probe">Probe</a>
+    <a href="#lessons">Lessons</a>
+    <a href="#thesis">Thesis</a>
+    <a href="https://github.com/aminalmasi/instance-based-composed-image-retrieval">Code</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <div>
+    <p class="eyebrow">Master's thesis · Data Science · University of Padova · 2026</p>
+    <h1><span class="a">This exact chair,</span><span class="b">in brown leather.</span></h1>
+    <p class="lede">A search query made of a photo and a short edit. A correct result has to show the <span class="idn-t">same literal object</span> as the photo, with the <span class="mod-t">edit applied</span>. A different chair in brown leather is wrong, and so is the same chair still in black. I built a two-stage retrieval system for this task and tested it on a public research benchmark of 1,883 search queries.</p>
+    <div class="vs" role="img" aria-label="Search quality: strongest baseline 59.64, this thesis 66.42, out of 100">
+      <p class="vs-h">Search quality on the benchmark<span>mAP@100: how high the correct images rank among the top 100 results, from 0 to 100. Higher is better.</span></p>
+      <div class="vs-row" data-tip="Strongest baseline: the benchmark's training-free recipe (BASIC) on SigLIP2, 59.64">
+        <span class="who">Strongest baseline<small>training-free recipe on SigLIP2</small></span>
+        <span class="track"><i style="width:59.64%"></i></span><b>59.64</b>
+      </div>
+      <div class="vs-row ours" data-tip="This thesis: the same first stage plus a second-stage verifier, 66.42 (+6.78)">
+        <span class="who">This thesis<small>+ second-stage verifier</small></span>
+        <span class="track"><i style="width:59.64%"></i><em style="left:59.64%;width:6.78%"></em></span><b>66.42</b>
+      </div>
+      <div class="vs-scale"><span></span><span><span>0</span><span>50</span><span>100</span></span><span></span></div>
+    </div>
+    <dl class="stats">
+      <div><dt>+6.8</dt><dd>points over the strongest baseline, an 11% relative gain</dd></div>
+      <div><dt>60%</dt><dd>of the 1,883 test queries rank better (1,122), against 27% that rank worse</dd></div>
+    </dl>
+  </div>
+  <div class="qcard" id="heroCard" aria-label="A real benchmark query and the system's top five results"></div>
+</div>
+
+<section id="task">
+  <p class="eyebrow">The task</p>
+  <h2>Two questions for every candidate image</h2>
+  <div class="col">
+    <p>In instance-level composed image retrieval, each query pairs a reference photo with a text modification such as <i>at night</i>, <i>as an emoji</i> or <i>with brown or dark beige leather</i>. The benchmark is ICIR: 1,883 queries over 202 object instances, from furniture and products to cartoon characters, artworks and landmarks.</p>
+    <p>Each query is ranked against its own pool of correct images and carefully chosen near misses, not against random distractors. So every candidate has to pass two checks at once:</p>
+  </div>
+  <div class="verdicts">
+    <div class="verdict">
+      <div class="checks"><span><i class="mk y" aria-hidden="true">✓</i><span class="idn-t">Same instance</span></span><span><i class="mk n" aria-hidden="true">✕</i><span class="mod-t">Edit applied</span></span></div>
+      <h3>Wrong: right object, old state</h3>
+      <p>The query chair again, still in black leather. Image similarity loves this candidate.</p>
+    </div>
+    <div class="verdict">
+      <div class="checks"><span><i class="mk n" aria-hidden="true">✕</i><span class="idn-t">Same instance</span></span><span><i class="mk y" aria-hidden="true">✓</i><span class="mod-t">Edit applied</span></span></div>
+      <h3>Wrong: right state, other object</h3>
+      <p>A different lounge chair in brown leather. Text similarity loves this one.</p>
+    </div>
+    <div class="verdict">
+      <div class="checks"><span><i class="mk y" aria-hidden="true">✓</i><span class="idn-t">Same instance</span></span><span><i class="mk y" aria-hidden="true">✓</i><span class="mod-t">Edit applied</span></span></div>
+      <h3>Correct</h3>
+      <p>The same chair, in brown leather. Only this one counts.</p>
+    </div>
+  </div>
+  <div class="col">
+    <h3 style="margin-top:22px">So the scores are multiplied, not added</h3>
+    <p>Relevance here is a logical AND. With a sum, a strong score on one check can make up for failing the other, and both kinds of near miss survive. With a product, failing either check pulls the whole score down. Measured on the same centered SigLIP2 scores, the operator alone moves mAP@100 from 15.84 to 50.09.</p>
+  </div>
+  <div class="chart" id="fusionChart" aria-label="mAP@100 by fusion operator"></div>
+</section>
+
+<section id="system">
+  <p class="eyebrow">The system</p>
+  <h2>A fast first stage, then a second opinion on the top 100</h2>
+  <div class="col">
+    <p>The first stage scores every candidate in the query's pool with frozen SigLIP2 and keeps the top 100. A heavier verifier then rescores only that shortlist. Both stage-one scores stay in the final product, so the second stage adds evidence instead of replacing it. Two verifiers work: a cheap one trained on another dataset (Route A) and a large multimodal embedder guided by a description of the object (Route B).</p>
+  </div>
+  <figure class="diagram">
+    <svg viewBox="0 0 1100 372" role="img" aria-labelledby="pipeTitle">
+      <title id="pipeTitle">Pipeline: query photo and text go through SigLIP2 stage one, the top 100 go to route A or route B, and each route multiplies four scores.</title>
+      <defs>
+        <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+      </defs>
+      <g font-family="Instrument Sans, Helvetica Neue, Arial, sans-serif" font-size="14" fill="currentColor">
+        <!-- inputs -->
+        <rect x="8" y="70" width="150" height="60" rx="6" fill="var(--idn-soft)" stroke="var(--idn)" stroke-width="2"/>
+        <text x="83" y="96" text-anchor="middle" font-weight="600" fill="var(--idn)">Query photo</text>
+        <text x="83" y="116" text-anchor="middle" font-size="12.5" fill="var(--muted)">the instance</text>
+        <rect x="8" y="160" width="150" height="60" rx="6" fill="var(--mod-soft)" stroke="var(--mod)" stroke-width="2"/>
+        <text x="83" y="186" text-anchor="middle" font-weight="600" fill="var(--mod)">Modification</text>
+        <text x="83" y="206" text-anchor="middle" font-size="12.5" fill="var(--muted)">"in brown leather"</text>
+        <!-- stage 1 -->
+        <rect x="200" y="52" width="250" height="186" rx="8" fill="var(--surface)" stroke="var(--rule)" stroke-width="1.5"/>
+        <text x="216" y="78" font-family="IBM Plex Mono, monospace" font-size="12" letter-spacing="1" fill="var(--muted)">STAGE 1 · SIGLIP2 SO400M</text>
+        <text x="216" y="108" font-weight="600" fill="var(--idn)">Centered image score s¹ᵢ</text>
+        <text x="216" y="127" font-size="12.5" fill="var(--muted)">leave-one-instance-out mean removed</text>
+        <text x="216" y="160" font-weight="600" fill="var(--mod)">Contextualized text score s¹ₜ</text>
+        <text x="216" y="179" font-size="12.5" fill="var(--muted)">edit wrapped in neutral captions</text>
+        <text x="216" y="216" font-family="IBM Plex Mono, monospace" font-size="13">s¹ᵢ × s¹ₜ → top 100</text>
+        <line x1="158" y1="100" x2="196" y2="112" stroke="currentColor" stroke-width="1.5" marker-end="url(#arr)"/>
+        <line x1="158" y1="190" x2="196" y2="166" stroke="currentColor" stroke-width="1.5" marker-end="url(#arr)"/>
+        <!-- shortlist -->
+        <rect x="490" y="112" width="96" height="66" rx="6" fill="var(--surface)" stroke="currentColor" stroke-width="1.5"/>
+        <text x="538" y="140" text-anchor="middle" font-weight="600">Top 100</text>
+        <text x="538" y="159" text-anchor="middle" font-size="12" fill="var(--muted)">+ both scores</text>
+        <line x1="450" y1="145" x2="486" y2="145" stroke="currentColor" stroke-width="1.5" marker-end="url(#arr)"/>
+        <!-- route A -->
+        <rect x="630" y="18" width="290" height="132" rx="8" fill="var(--surface)" stroke="var(--rule)" stroke-width="1.5"/>
+        <text x="646" y="44" font-family="IBM Plex Mono, monospace" font-size="12" letter-spacing="1" fill="var(--muted)">ROUTE A · ILIAS PROBE</text>
+        <text x="646" y="72" font-weight="600">SigLIP1 + linear probe sᴬᵢ</text>
+        <text x="646" y="91" font-size="12.5" fill="var(--muted)">trained on ILIAS instance retrieval</text>
+        <text x="646" y="118" font-weight="600">SigLIP1 contextualized text sᴬₜ</text>
+        <text x="646" y="137" font-size="12.5" fill="var(--muted)">cheap: dot products on the shortlist</text>
+        <!-- route B -->
+        <rect x="630" y="196" width="290" height="160" rx="8" fill="var(--fin-soft)" stroke="var(--fin)" stroke-width="2"/>
+        <text x="646" y="222" font-family="IBM Plex Mono, monospace" font-size="12" letter-spacing="1" fill="var(--fin)">ROUTE B · RZENEMBED-7B</text>
+        <text x="646" y="250" font-weight="600">Instance descriptor</text>
+        <text x="646" y="269" font-size="12.5" fill="var(--muted)">one line per query, MLLM-written offline</text>
+        <text x="646" y="298" font-weight="600">Descriptor-guided embedding</text>
+        <text x="646" y="317" font-size="12.5" fill="var(--muted)">compared with RZEn query image and text:</text>
+        <text x="646" y="338" font-family="IBM Plex Mono, monospace" font-size="13">sᴮᵢ and sᴮₜ</text>
+        <path d="M586 132 C608 132 606 84 626 84" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#arr)"/>
+        <path d="M586 158 C608 158 606 270 626 270" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#arr)"/>
+        <!-- products -->
+        <text x="940" y="68" font-family="IBM Plex Mono, monospace" font-size="13">s¹ᵢ·s¹ₜ·sᴬᵢ·sᴬₜ</text>
+        <text x="940" y="92" font-family="Anybody, Arial Narrow, sans-serif" font-size="26" font-weight="700">66.05</text>
+        <text x="940" y="112" font-size="12" fill="var(--muted)">mAP@100</text>
+        <text x="940" y="262" font-family="IBM Plex Mono, monospace" font-size="13">s¹ᵢ·s¹ₜ·sᴮᵢ·sᴮₜ</text>
+        <text x="940" y="290" font-family="Anybody, Arial Narrow, sans-serif" font-size="26" font-weight="700" fill="var(--fin)">66.42</text>
+        <text x="940" y="310" font-size="12" fill="var(--muted)">mAP@100, final</text>
+        <line x1="920" y1="84" x2="934" y2="84" stroke="currentColor" stroke-width="1.5"/>
+        <line x1="920" y1="276" x2="934" y2="276" stroke="currentColor" stroke-width="1.5"/>
+        <text x="200" y="290" font-size="12.5" fill="var(--muted)">Stage 1 alone: 59.64 mAP@100, 93.08 Recall@100.</text>
+        <text x="200" y="310" font-size="12.5" fill="var(--muted)">Reranking keeps the same 100 candidates,</text>
+        <text x="200" y="328" font-size="12.5" fill="var(--muted)">so recall stays at 93.08 and only the order changes.</text>
+      </g>
+    </svg>
+    <figcaption><b>The final pipeline.</b> Stage 1 is shared. Each route adds two scores for the same top 100 and multiplies them with the two stored stage-one scores.</figcaption>
+  </figure>
+
+  <div class="stages">
+    <div class="stage" style="--c: var(--idn)">
+      <p class="tag">Stage 1</p>
+      <h3>Two corrections to a frozen model</h3>
+      <p><b>Image centering.</b> For a query of instance <i>c</i>, subtract the mean image embedding of every other instance, then compare. This removes dataset-wide directions (style, background, photo quality) that make different objects look alike.</p>
+      <p><b>Text contextualization.</b> SigLIP's text tower was trained on captions, and <i>"at night"</i> is not a caption. The edit is wrapped in neutral caption fragments, before and after, and the embeddings are averaged. No answer information is added.</p>
+    </div>
+    <div class="stage" style="--c: var(--neutral)">
+      <p class="tag">Route A</p>
+      <h3>A probe trained elsewhere</h3>
+      <p>A linear projection on frozen SigLIP1 features, trained on ILIAS, a separate instance-retrieval dataset. Swapping such a probe in for the image branch hurts: with SigLIP2, mAP@100 drops from 59.64 to 55.95. Used as one extra factor next to a matching text score, it reaches <b>66.05</b>.</p>
+    </div>
+    <div class="stage" style="--c: var(--fin)">
+      <p class="tag">Route B, final</p>
+      <h3>Point the big model at the object</h3>
+      <p>An MLLM writes one line describing the query's object, with no mention of the edit. RzenEmbed-7B embeds each shortlisted candidate with that line as a guide:</p>
+      <blockquote>Represent the candidate image for exact instance-level retrieval. Use the provided instance descriptor as an attention guide for the literal identity…</blockquote>
+      <p>Without the descriptor the same model reaches 62.54. With it: <b>66.42</b>.</p>
+    </div>
+  </div>
+
+  <div class="note" id="formulaNote">
+    <b>Exact formula of the 66.42 run.</b> The thesis describes the final score as the four-score product s¹ᵢ · s¹ₜ · sᴮᵢ · sᴮₜ. The run that produced 66.42 mAP@100 and 65.65 macro-mAP@100 also takes the square root of s¹ₜ and multiplies in a fifth factor: the square root of a SigLIP2 state score, the candidate's similarity to an MLLM-written caption of the target state minus 0.2 times its similarity to a caption of the source state.
+    <div class="formula" style="margin-top:10px">score = s¹ᵢ · √s¹ₜ · sᴮᵢ · sᴮₜ · √(s<sub>target state</sub> − 0.2 · s<sub>source state</sub>)</div>
+    The plain four-score product scores <b>66.31</b> mAP@100 and <b>65.94</b> macro-mAP@100 on the same stored scores. The examples below use the 66.42 formula.
+  </div>
+</section>
+
+<section id="examples">
+  <p class="eyebrow">Examples</p>
+  <h2>Real queries, before and after reranking</h2>
+  <div class="col">
+    <p>Each row is a real top 10 from the benchmark. A green frame with a tick marks a correct image; a red frame with a cross marks a near miss. AP is average precision at 100 for that query. Six queries where reranking helps, and three where it breaks a ranking that stage 1 had right.</p>
+  </div>
+  <div class="tabs" role="tablist" aria-label="Example queries" id="exTabs"></div>
+  <div class="panel" id="exPanel" role="tabpanel" aria-live="polite"></div>
+  <p class="credit">Images from the ICIR benchmark (Psomas et al., 2025), licensed CC BY-NC-SA 4.0, shown here as thumbnails for non-commercial use.</p>
+</section>
+
+<section id="results">
+  <p class="eyebrow">Results</p>
+  <h2>Where the score comes from</h2>
+  <div class="col">
+    <p>Every row below is a measured run on all 1,883 queries. The first group builds the training-free first stage one change at a time. The second group adds one verifier at a time to that same top 100. The dashed line is BASIC, the method published with the benchmark.</p>
+  </div>
+  <div class="chart" id="ladderChart" aria-label="mAP@100 for each step of the pipeline"></div>
+
+  <div class="col" style="margin-top:28px">
+    <h3>Most queries improve, not just a few</h3>
+    <p>A higher mean can hide a method that helps a few queries a lot and hurts many a little. Against stage 1, query by query, the final reranker:</p>
+  </div>
+  <div class="stack" id="outcomeBar" role="img" aria-label="1,122 queries improved, 255 tied, 506 worse"></div>
+  <div class="stackkey" id="outcomeKey"></div>
+  <p class="muted col" style="margin-top:12px; font-size:0.94rem">Mean change +6.78 AP points per query. RZEn used alone, without the stage-one scores, does the opposite: it worsens 1,010 queries, improves 730, and loses 5.51 points on average.</p>
+
+  <div class="col" style="margin-top:30px">
+    <h3>Seven frozen backbones, one protocol</h3>
+    <p>Before choosing SigLIP2, I ran the same first-stage recipes on seven embedding models, from CLIP to 7B multimodal embedders. The biggest model was not the best first stage.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Backbone</th><th class="n">Raw product</th><th class="n">BASIC-style</th><th class="n">Centered + contextualized</th></tr></thead>
+      <tbody>
+        <tr class="sub"><td colspan="4">Dual encoders</td></tr>
+        <tr><td>OpenAI CLIP ViT-L/14<small>~428M parameters · BASIC column is the paper's reference</small></td><td class="n">17.48</td><td class="n">31.64</td><td class="n">41.00</td></tr>
+        <tr><td>OpenCLIP ViT-H/14<small>~1B parameters</small></td><td class="n">31.82</td><td class="n">41.69</td><td class="n">47.07</td></tr>
+        <tr><td>SigLIP SO400M Patch14 384<small>~0.9B parameters</small></td><td class="n">10.64</td><td class="n">32.27</td><td class="n">48.86</td></tr>
+        <tr class="best"><td>SigLIP2 SO400M Patch16 384<small>~0.9B parameters · chosen first stage</small></td><td class="n">35.57</td><td class="n">51.90</td><td class="n">59.64</td></tr>
+        <tr class="sub"><td colspan="4">Multimodal LLM embedders</td></tr>
+        <tr><td>Qwen3-VL-Embedding-2B</td><td class="n">24.56</td><td class="n">25.80</td><td class="n">37.61</td></tr>
+        <tr><td>VLM2Vec-V2.0-Qwen2VL-2B</td><td class="n">23.39</td><td class="n">27.74</td><td class="n">39.64</td></tr>
+        <tr><td>RzenEmbed-7B</td><td class="n">49.44</td><td class="n">46.22</td><td class="n">51.97</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted col" style="font-size:0.94rem">mAP@100 on all queries. On the backbone BASIC was published with, CLIP ViT-L/14, the same ideas move BASIC's 31.64 to 41.00 for the first stage and 56.51 with the ILIAS-probe reranker.</p>
+</section>
+
+<section id="probe">
+  <p class="eyebrow">Probe</p>
+  <h2>The instance information is already in the frozen embeddings</h2>
+  <div class="col">
+    <p>Route A rests on a finding about the representation itself. On ILIAS, an instance-retrieval dataset, I trained only a linear projection on top of frozen SigLIP2 features, holding out one whole domain each time and testing on it. To keep this affordable I cut ILIAS's distractor set to about one million images, chosen to keep the hard negatives.</p>
+    <p>Macro-mAP@100 over the eight held-out domains rose from <b>31.39</b> to <b>73.26</b>. Every domain improved, including the ones the probe never saw in training.</p>
+  </div>
+  <div class="chart dumb" id="domainChart" aria-label="ILIAS held-out domain mAP@100, frozen versus probe"></div>
+  <div class="col" style="margin-top:18px">
+    <p>A linear head cannot invent evidence the backbone does not encode, so the instance structure was there all along; raw cosine similarity just does not expose it. The catch is calibration: the probe sharpens the image side only, so on ICIR it works as an extra factor next to a text score, not as a replacement.</p>
+  </div>
+</section>
+
+<section id="lessons">
+  <p class="eyebrow">Lessons</p>
+  <h2>What did not help, and where it still fails</h2>
+  <div class="col"><p>The final system is short on purpose. These ideas were measured and left out.</p></div>
+  <div class="lessons">
+    <div class="lesson"><h3>Projection and query expansion</h3><p>Both lowered SigLIP2's first stage. Directions that look like global noise can carry the small cues that tell two near-identical objects apart.</p></div>
+    <div class="lesson"><h3>Min-score scaling</h3><p>The benchmark's score normalization took the first stage from 59.64 down to 55.75 mAP@100.</p></div>
+    <div class="lesson"><h3>Text centering</h3><p>Centering the text side against external caption corpora did not improve the final SigLIP2 setting. A short edit has few repeated background-like directions to remove.</p></div>
+    <div class="lesson"><h3>Richer generated text</h3><p>Longer captions, rewrites and future-state captions from open MLLMs added variability to the text branch more often than evidence.</p></div>
+    <div class="lesson"><h3>Grounding crops</h3><p>Cropping candidates to the detected object (Grounding DINO) lost to whole images: many boxes were imperfect, and some identities live in scale and surroundings.</p></div>
+    <div class="lesson"><h3>A bigger model as the first stage</h3><p>RzenEmbed-7B alone ranks worse than SigLIP2. It helps only as a second opinion on the shortlist, with the stage-one scores kept.</p></div>
+  </div>
+  <div class="col">
+    <h3 style="margin-top:14px">Known failure modes</h3>
+    <ul class="plain">
+      <li><b>The descriptor can describe what should change.</b> For the BMW query below, the descriptor mentions the bike's white body while the edit asks for black.</li>
+      <li><b>Context-dependent identities.</b> Signs, beaches and landmarks depend on viewpoint and surroundings that one descriptor line does not pin down.</li>
+      <li><b>Recall is capped by stage 1.</b> A reranker only reorders the top 100; positives outside it (6.92% on average) cannot come back.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="thesis">
+  <p class="eyebrow">Thesis and code</p>
+  <h2>Read it, or run it</h2>
+  <div class="cta">
+    <a class="btn primary" href="almasi-msc-thesis-2026.pdf">Download the thesis <small>PDF · 125 pages · 13 MB</small></a>
+    <a class="btn" href="https://github.com/aminalmasi/instance-based-composed-image-retrieval">Code on GitHub <small>Apache-2.0</small></a>
+  </div>
+  <dl class="meta">
+    <dt>Title</dt><dd>Instance-Based Composed Image Retrieval with Vision-Language Models</dd>
+    <dt>Author</dt><dd>Mohammadamin Almasi Kolor</dd>
+    <dt>Supervisor</dt><dd>Prof. Lamberto Ballan, University of Padova</dd>
+    <dt>Co-supervisor</dt><dd>Prof. Marco Fiorucci, University of Padova</dd>
+    <dt>Degree</dt><dd>M.Sc. Data Science, Department of Mathematics, academic year 2025 to 2026</dd>
+    <dt>Code</dt><dd>Stage 1, Route A and Route B configs, metric definitions, tests and SLURM templates; release v0.1.0 ships the ILIAS probe checkpoints and the descriptor table.</dd>
+    <dt>Compute</dt><dd>A shared SLURM cluster: A100 40 GB, RTX PRO 6000 Blackwell 96 GB, A6000 / 6000 Ada 48 GB and A5000 24 GB nodes. RZEn runs only on the top 100, sharded across idle GPUs with adaptive batch sizes and out-of-memory backoff.</dd>
+  </dl>
+  <pre class="bib">@mastersthesis{almasi2026icir,
+  title  = {Instance-Based Composed Image Retrieval with Vision-Language Models},
+  author = {Almasi Kolor, Mohammadamin},
+  school = {University of Padova},
+  year   = {2026}
+}</pre>
+</section>
+
+<footer>
+  <p>Built on the ICIR benchmark and its BASIC baseline (Psomas et al., <i>Instance-Level Composed Image Retrieval</i>, 2025; data CC BY-NC-SA 4.0, code MIT), ILIAS (Kordopatis-Zilos et al., CVPR 2025), SigLIP and SigLIP2, and RzenEmbed (Jian et al., 2025). Their licences apply to their data and weights. Images on this page are ICIR thumbnails shown for non-commercial use with attribution. Page by <a href="https://github.com/aminalmasi">aminalmasi</a>, October 2026.</p>
+</footer>
+
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const EXAMPLES = [{"id":"q_00744","label":"Eames lounge chair","kind":"furniture","outcome":"win","mod":"with brown or dark beige leather","positives":9,"descriptor":"A black leather lounge chair with a matching ottoman and wooden frame base.","query":"media/ex/2cbc8e442bec.jpg","stage1":{"ap":38.9,"top":[{"img":"media/ex/16168f54f4ab.jpg","pos":true},{"img":"media/ex/85ea37aa2174.jpg","pos":false},{"img":"media/ex/ff9613961036.jpg","pos":true},{"img":"media/ex/22d9cd4c70c8.jpg","pos":false},{"img":"media/ex/faf8d19f5043.jpg","pos":true},{"img":"media/ex/ec2b861844d8.jpg","pos":false},{"img":"media/ex/2bd1e6a1e186.jpg","pos":false},{"img":"media/ex/fa6cd870d900.jpg","pos":false},{"img":"media/ex/dfa5b54fd8e6.jpg","pos":false},{"img":"media/ex/aa7b33b7ae9f.jpg","pos":false}]},"final":{"ap":75.8,"top":[{"img":"media/ex/16168f54f4ab.jpg","pos":true},{"img":"media/ex/faf8d19f5043.jpg","pos":true},{"img":"media/ex/ff9613961036.jpg","pos":true},{"img":"media/ex/983c1c275024.jpg","pos":true},{"img":"media/ex/d895b482531f.jpg","pos":true},{"img":"media/ex/1e49b230640a.jpg","pos":true},{"img":"media/ex/262ae5ef5ccc.jpg","pos":false},{"img":"media/ex/22d9cd4c70c8.jpg","pos":false},{"img":"media/ex/6622c0aef54f.jpg","pos":false},{"img":"media/ex/84e7ea5fc5d1.jpg","pos":false}]}},{"id":"q_00333","label":"Link","kind":"character","outcome":"win","mod":"as a human size statue","positives":9,"descriptor":"A young man with pointed ears, blonde hair, and blue eyes holds a bow and arrow.","query":"media/ex/bafc58ca8001.jpg","stage1":{"ap":31.3,"top":[{"img":"media/ex/3cdd87fbabfe.jpg","pos":true},{"img":"media/ex/b07ab176f36c.jpg","pos":false},{"img":"media/ex/04ae1a473ab6.jpg","pos":false},{"img":"media/ex/5fb6010e1df1.jpg","pos":false},{"img":"media/ex/ddf399f5f663.jpg","pos":false},{"img":"media/ex/58dc0dd93e27.jpg","pos":false},{"img":"media/ex/e99b1363aee2.jpg","pos":false},{"img":"media/ex/f6621f0d101f.jpg","pos":false},{"img":"media/ex/d41466bbd25d.jpg","pos":true},{"img":"media/ex/f24c8c566a5b.jpg","pos":false}]},"final":{"ap":98.0,"top":[{"img":"media/ex/3cdd87fbabfe.jpg","pos":true},{"img":"media/ex/03afe023235c.jpg","pos":true},{"img":"media/ex/a47932dd2752.jpg","pos":true},{"img":"media/ex/2e419833bed9.jpg","pos":true},{"img":"media/ex/bfe5bd419ba8.jpg","pos":true},{"img":"media/ex/d41466bbd25d.jpg","pos":true},{"img":"media/ex/9b929be761c0.jpg","pos":true},{"img":"media/ex/951b0c9028fa.jpg","pos":true},{"img":"media/ex/e99b1363aee2.jpg","pos":false},{"img":"media/ex/b07ab176f36c.jpg","pos":false}]}},{"id":"q_00531","label":"Himeji Castle","kind":"landmark","outcome":"win","mod":"lit up with nighttime projection mapping visuals","positives":3,"descriptor":"A large white multi-story fortress with a stone base and traditional Japanese architecture.","query":"media/ex/91e0dc58f689.jpg","stage1":{"ap":11.8,"top":[{"img":"media/ex/b3f9e1e7b1e0.jpg","pos":false},{"img":"media/ex/bc946127b25a.jpg","pos":false},{"img":"media/ex/825811e3cc7b.jpg","pos":false},{"img":"media/ex/ab91e2aa2652.jpg","pos":false},{"img":"media/ex/4cea5a24aae7.jpg","pos":false},{"img":"media/ex/e575dd37cfdb.jpg","pos":false},{"img":"media/ex/978d1cb95b5b.jpg","pos":false},{"img":"media/ex/3241b66a9582.jpg","pos":false},{"img":"media/ex/db1db738db44.jpg","pos":false},{"img":"media/ex/7a4b7c7c65e2.jpg","pos":false}]},"final":{"ap":76.7,"top":[{"img":"media/ex/bdeaa9e62fca.jpg","pos":true},{"img":"media/ex/700a2cf1c870.jpg","pos":true},{"img":"media/ex/ab91e2aa2652.jpg","pos":false},{"img":"media/ex/b3f9e1e7b1e0.jpg","pos":false},{"img":"media/ex/e575dd37cfdb.jpg","pos":false},{"img":"media/ex/825811e3cc7b.jpg","pos":false},{"img":"media/ex/e18aedc235db.jpg","pos":false},{"img":"media/ex/3241b66a9582.jpg","pos":false},{"img":"media/ex/e154bd17c7ea.jpg","pos":false},{"img":"media/ex/b7d22fcce034.jpg","pos":true}]}},{"id":"q_00964","label":"Ferrari F40","kind":"vehicle","outcome":"win","mod":"as a miniature","positives":9,"descriptor":"A bright red sports car with a sleek aerodynamic body and large alloy wheels.","query":"media/ex/b41c26a6e454.jpg","stage1":{"ap":36.4,"top":[{"img":"media/ex/69ae58de2cb5.jpg","pos":false},{"img":"media/ex/27306e58cacc.jpg","pos":true},{"img":"media/ex/e7ffef4da4a8.jpg","pos":false},{"img":"media/ex/e2305e6b8f56.jpg","pos":true},{"img":"media/ex/6df04e053365.jpg","pos":false},{"img":"media/ex/d87d1a28e0d5.jpg","pos":false},{"img":"media/ex/96caed41a791.jpg","pos":true},{"img":"media/ex/0d14bad1227f.jpg","pos":false},{"img":"media/ex/7bfc7e8f9008.jpg","pos":false},{"img":"media/ex/a03a8e2f4cc9.jpg","pos":false}]},"final":{"ap":91.4,"top":[{"img":"media/ex/e2305e6b8f56.jpg","pos":true},{"img":"media/ex/11524ed0b9cd.jpg","pos":true},{"img":"media/ex/27306e58cacc.jpg","pos":true},{"img":"media/ex/12a6af1613cf.jpg","pos":true},{"img":"media/ex/96ae6900bc89.jpg","pos":true},{"img":"media/ex/9330f6cac6fa.jpg","pos":true},{"img":"media/ex/96caed41a791.jpg","pos":true},{"img":"media/ex/a03a8e2f4cc9.jpg","pos":false},{"img":"media/ex/23a4cba898bf.jpg","pos":false},{"img":"media/ex/0c87e6186398.jpg","pos":true}]}},{"id":"q_00471","label":"Gray bunny slippers","kind":"household","outcome":"win","mod":"arranged beside the bed","positives":4,"descriptor":"A pair of fuzzy gray slippers with a bunny and text embroidered on the front.","query":"media/ex/188b7184ae45.jpg","stage1":{"ap":13.2,"top":[{"img":"media/ex/929a742a6115.jpg","pos":false},{"img":"media/ex/0e88bf2ddcb9.jpg","pos":false},{"img":"media/ex/f00b168704f4.jpg","pos":false},{"img":"media/ex/35b5ad26d3a2.jpg","pos":false},{"img":"media/ex/d28654bd35d9.jpg","pos":false},{"img":"media/ex/cd7f56cf6577.jpg","pos":false},{"img":"media/ex/93fad1f1f9b3.jpg","pos":false},{"img":"media/ex/a3de36860dd0.jpg","pos":false},{"img":"media/ex/e00d2f29ea43.jpg","pos":false},{"img":"media/ex/0f5c6ba99df9.jpg","pos":false}]},"final":{"ap":89.3,"top":[{"img":"media/ex/f127ff810748.jpg","pos":true},{"img":"media/ex/730e04d5eb8b.jpg","pos":true},{"img":"media/ex/f7b01834ea4b.jpg","pos":true},{"img":"media/ex/f46c30e28b5f.jpg","pos":false},{"img":"media/ex/c3c66dd3841b.jpg","pos":false},{"img":"media/ex/da4efe43f970.jpg","pos":false},{"img":"media/ex/80d41591706f.jpg","pos":true},{"img":"media/ex/929a742a6115.jpg","pos":false},{"img":"media/ex/77e4bfb08540.jpg","pos":false},{"img":"media/ex/35b5ad26d3a2.jpg","pos":false}]}},{"id":"q_00620","label":"Toothless","kind":"character","outcome":"win","mod":"on a black t-shirt","positives":12,"descriptor":"A dark grey dragon head with large green eyes and a stitched scar on the forehead.","query":"media/ex/5c9439c13d4d.jpg","stage1":{"ap":36.8,"top":[{"img":"media/ex/44fa1d275802.jpg","pos":false},{"img":"media/ex/f7a7017e7266.jpg","pos":false},{"img":"media/ex/929d41b0ae9a.jpg","pos":true},{"img":"media/ex/e79a2272f2d6.jpg","pos":false},{"img":"media/ex/a8715791e622.jpg","pos":true},{"img":"media/ex/a174b2c3268e.jpg","pos":false},{"img":"media/ex/c67d2f2d7726.jpg","pos":true},{"img":"media/ex/b76f59cd7e46.jpg","pos":true},{"img":"media/ex/14db8cd4d314.jpg","pos":false},{"img":"media/ex/6f46f8362dcd.jpg","pos":false}]},"final":{"ap":94.8,"top":[{"img":"media/ex/929d41b0ae9a.jpg","pos":true},{"img":"media/ex/a8715791e622.jpg","pos":true},{"img":"media/ex/14de1b8aa171.jpg","pos":true},{"img":"media/ex/b76f59cd7e46.jpg","pos":true},{"img":"media/ex/feb2125f8c9a.jpg","pos":true},{"img":"media/ex/aff4268245ee.jpg","pos":true},{"img":"media/ex/510a7beb5fae.jpg","pos":true},{"img":"media/ex/c67d2f2d7726.jpg","pos":true},{"img":"media/ex/2827e88020b9.jpg","pos":false},{"img":"media/ex/b003d303e374.jpg","pos":true}]}},{"id":"q_00145","label":"BMW R 1250 GS","kind":"vehicle","outcome":"fail","mod":"in black color","positives":5,"descriptor":"The vehicle features a white body with blue and red stripes on the side panels.","query":"media/ex/cbee135b45fc.jpg","stage1":{"ap":68.2,"top":[{"img":"media/ex/a5bd0e558f27.jpg","pos":true},{"img":"media/ex/75e6fc12c8d7.jpg","pos":true},{"img":"media/ex/735945de5c2d.jpg","pos":true},{"img":"media/ex/e01e67c4537f.jpg","pos":false},{"img":"media/ex/6b7744350f59.jpg","pos":false},{"img":"media/ex/b99798977c84.jpg","pos":false},{"img":"media/ex/befcf6b0e41e.jpg","pos":false},{"img":"media/ex/b27f90a6dd1d.jpg","pos":false},{"img":"media/ex/3b0615eb6582.jpg","pos":false},{"img":"media/ex/7a5bf1ff481b.jpg","pos":false}]},"final":{"ap":8.4,"top":[{"img":"media/ex/6d3ab104da4e.jpg","pos":false},{"img":"media/ex/a2d427b4e42b.jpg","pos":false},{"img":"media/ex/74b00a27fe1d.jpg","pos":false},{"img":"media/ex/88e60f12066f.jpg","pos":false},{"img":"media/ex/fb1b9fa0fa04.jpg","pos":false},{"img":"media/ex/964b482cd066.jpg","pos":false},{"img":"media/ex/befcf6b0e41e.jpg","pos":false},{"img":"media/ex/7a5bf1ff481b.jpg","pos":false},{"img":"media/ex/a5bd0e558f27.jpg","pos":true},{"img":"media/ex/e01e67c4537f.jpg","pos":false}]}},{"id":"q_01667","label":"Multilingual sign","kind":"sign","outcome":"fail","mod":"surrounded by chairs","positives":3,"descriptor":"A large blue sign with multilingual text hanging on a white wall.","query":"media/ex/a1a573a0dcc6.jpg","stage1":{"ap":83.3,"top":[{"img":"media/ex/ab999d102113.jpg","pos":true},{"img":"media/ex/118b8e5a7973.jpg","pos":true},{"img":"media/ex/31514d674cca.jpg","pos":false},{"img":"media/ex/c988520ad3d9.jpg","pos":false},{"img":"media/ex/19625dca9168.jpg","pos":false},{"img":"media/ex/fee074d0e178.jpg","pos":true},{"img":"media/ex/2079a6b20eee.jpg","pos":false},{"img":"media/ex/4fa49ff7a034.jpg","pos":false},{"img":"media/ex/2f45cc0282ed.jpg","pos":false},{"img":"media/ex/0dfd8a7a6099.jpg","pos":false}]},"final":{"ap":2.1,"top":[{"img":"media/ex/31514d674cca.jpg","pos":false},{"img":"media/ex/7e85cc24c7e4.jpg","pos":false},{"img":"media/ex/d4103165fa11.jpg","pos":false},{"img":"media/ex/708d9e32f71a.jpg","pos":false},{"img":"media/ex/95807dfc6a54.jpg","pos":false},{"img":"media/ex/2079a6b20eee.jpg","pos":false},{"img":"media/ex/e42feee5d642.jpg","pos":false},{"img":"media/ex/f90b58e3b8aa.jpg","pos":false},{"img":"media/ex/2e03ab79cd59.jpg","pos":false},{"img":"media/ex/f4db43088b6d.jpg","pos":false}]}},{"id":"q_01698","label":"Balos, Crete","kind":"landscape","outcome":"fail","mod":"from an aerial viewpoint","positives":4,"descriptor":"A small rocky island with a sandy beach and clear turquoise water surrounding it.","query":"media/ex/25b3e72b9869.jpg","stage1":{"ap":85.4,"top":[{"img":"media/ex/5366289fd809.jpg","pos":true},{"img":"media/ex/c25d00b2c100.jpg","pos":true},{"img":"media/ex/8e7883cfb926.jpg","pos":false},{"img":"media/ex/594c448b420e.jpg","pos":true},{"img":"media/ex/766c976f15bd.jpg","pos":false},{"img":"media/ex/639ea1d55ee8.jpg","pos":true},{"img":"media/ex/c4c97c07ff68.jpg","pos":false},{"img":"media/ex/813f13d7d0e1.jpg","pos":false},{"img":"media/ex/82a5ae78d12e.jpg","pos":false},{"img":"media/ex/161b16a5e3ae.jpg","pos":false}]},"final":{"ap":15.1,"top":[{"img":"media/ex/813f13d7d0e1.jpg","pos":false},{"img":"media/ex/766c976f15bd.jpg","pos":false},{"img":"media/ex/51c16f2e1377.jpg","pos":false},{"img":"media/ex/76c0659ebbb8.jpg","pos":false},{"img":"media/ex/5366289fd809.jpg","pos":true},{"img":"media/ex/a43d37452aa8.jpg","pos":false},{"img":"media/ex/14c60b00b441.jpg","pos":false},{"img":"media/ex/161b16a5e3ae.jpg","pos":false},{"img":"media/ex/714b2cc2880e.jpg","pos":false},{"img":"media/ex/4b62dcc963c1.jpg","pos":false}]}}];
+
+const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;"}[c]));
+const mark = pos => `<i class="mk ${pos ? "y" : "n"} m" aria-hidden="true">${pos ? "✓" : "✕"}</i>`;
+
+function tiles(list, n) {
+  const g = el("div", "tiles");
+  list.slice(0, n).forEach((t, i) => {
+    const d = el("div", "tile" + (t.pos ? " pos" : ""));
+    d.innerHTML = `<img src="${t.img}" alt="Rank ${i + 1}: ${t.pos ? "correct" : "near miss"}" loading="lazy"><span class="r">${i + 1}</span>${mark(t.pos)}`;
+    g.appendChild(d);
+  });
+  return g;
+}
+
+/* hero card: the Eames chair query */
+(function hero() {
+  const ex = EXAMPLES[0], card = document.getElementById("heroCard");
+  const row = el("div", "qrow");
+  const left = el("div");
+  left.innerHTML = `<p class="qlabel">Query photo</p><div class="qimg"><img src="${ex.query}" alt="Query: an Eames lounge chair in black leather"></div>`;
+  const right = el("div");
+  right.innerHTML = `<p class="qlabel">Edit</p><span class="chip">${esc(ex.mod)}</span>`;
+  row.append(left, right);
+  const res = el("div", "qres");
+  const hits = ex.final.top.slice(0, 5).filter(t => t.pos).length;
+  res.innerHTML = `<p class="qlabel">Top 5 after reranking</p>`;
+  res.appendChild(tiles(ex.final.top, 5));
+  res.appendChild(el("p", "qcap", `A real query from the benchmark. ${hits} of the top 5 are the same chair in brown or beige leather; this query's score rises from ${ex.stage1.ap} to ${ex.final.ap}.`));
+  card.append(row, res);
+})();
+
+/* explorer */
+const NOTES = {
+  q_00744: "The descriptor even says black leather, the state the edit changes. Reranking still roughly doubles AP, from 38.9 to 75.8.",
+  q_00333: "The descriptor lists what makes this character Link: pointed ears, blonde hair, a bow and arrow. The statue part is left to the text scores.",
+  q_00531: "Projection mapping recolours the whole scene, so identity has to come from what the descriptor names: a white multi-story fortress on a stone base.",
+  q_00964: "The descriptor names the car, not the scale: a bright red sports car. Whether it is a miniature is left to the text scores.",
+  q_00471: "A small household object, identified by details a generic caption would skip: the bunny and the embroidered text.",
+  q_00620: "Identity cues from the descriptor: large green eyes and a stitched scar. The black t-shirt is left to the edit.",
+  q_00145: "The descriptor describes a white body with blue and red stripes, the very attribute the edit asks to change, so identity guidance pushes against the edit.",
+  q_01667: "Stage 1 had this nearly right (83.3 AP). The descriptor, a blue sign on a white wall, says nothing about the chairs that make the edit true, and the reranked top 10 loses every correct image.",
+  q_01698: "A landscape seen from above: identity depends on viewpoint and surroundings that one descriptor line does not pin down."
+};
+const tabsEl = document.getElementById("exTabs"), panelEl = document.getElementById("exPanel");
+function showExample(i) {
+  const ex = EXAMPLES[i];
+  [...tabsEl.querySelectorAll(".tab")].forEach((b, j) => { b.setAttribute("aria-selected", String(j === i)); b.tabIndex = j === i ? 0 : -1; });
+  const n1 = ex.stage1.top.filter(t => t.pos).length, n2 = ex.final.top.filter(t => t.pos).length;
+  panelEl.innerHTML = "";
+  const q = el("div", "query");
+  q.innerHTML = `<img src="${ex.query}" alt="Query photo: ${esc(ex.label)}"><div><span class="chip">${esc(ex.mod)}</span>
+    <p class="desc">Descriptor written for RZEn: <q>${esc(ex.descriptor)}</q></p>
+    <p class="desc">${ex.positives} correct images in this query's pool.</p></div>`;
+  const ranks = el("div", "ranks");
+  for (const [key, name, cls] of [["stage1", "Stage 1 · SigLIP2", "idn-t"], ["final", "Final · reranked with RZEn", "fin-t"]]) {
+    const r = el("div");
+    const head = el("div", "rankhead");
+    head.innerHTML = `<h3 class="${cls}">${name}</h3><span class="ap">AP@100 <b>${ex[key].ap.toFixed(1)}</b> · ${key === "stage1" ? n1 : n2} of 10 correct</span>`;
+    r.append(head, tiles(ex[key].top, 10));
+    ranks.appendChild(r);
+  }
+  ranks.appendChild(el("p", "exnote", esc(NOTES[ex.id] || "")));
+  panelEl.append(q, ranks);
+}
+EXAMPLES.forEach((ex, i) => {
+  if (i > 0 && ex.outcome !== EXAMPLES[i - 1].outcome) tabsEl.appendChild(el("span", "tabsep"));
+  const d = ex.final.ap - ex.stage1.ap;
+  const b = el("button", "tab", `${esc(ex.label)} <span class="d ${d >= 0 ? "up" : "down"}">${d >= 0 ? "+" : "−"}${Math.abs(d).toFixed(1)}</span>`);
+  b.type = "button"; b.setAttribute("role", "tab"); b.id = "extab" + i;
+  b.addEventListener("click", () => showExample(i));
+  b.addEventListener("keydown", e => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const k = (i + (e.key === "ArrowRight" ? 1 : EXAMPLES.length - 1)) % EXAMPLES.length;
+    showExample(k); document.getElementById("extab" + k).focus();
+  });
+  tabsEl.appendChild(b);
+});
+showExample(0);
+
+/* charts: HTML bars on one linear scale per chart */
+function barChart(host, { max, step, rows, ref, legend, valueFmt = v => v.toFixed(2) }) {
+  const box = document.getElementById(host);
+  if (legend) box.appendChild(el("div", "legend", legend.map(([c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join("")));
+  const bars = el("div", "bars");
+  bars.style.setProperty("--tick", (100 * step / max) + "%");
+  for (const r of rows) {
+    if (r.group) { bars.appendChild(el("div", "grp", r.group)); continue; }
+    const b = el("div", "bar" + (r.hl ? " hl" : ""));
+    b.innerHTML = `<div class="l">${r.label}${r.sub ? `<small>${r.sub}</small>` : ""}</div>
+      <div class="t"><div class="f" style="width:${100 * r.v / max}%;--c:${r.c}"></div></div><div class="v">${valueFmt(r.v)}</div>`;
+    b.dataset.tip = r.tip || `${r.label.replace(/<[^>]+>/g, "")}: ${valueFmt(r.v)}`;
+    bars.appendChild(b);
+  }
+  box.appendChild(bars);
+  const ax = el("div", "axis");
+  let ticks = "";
+  for (let v = 0; v <= max + 1e-9; v += step) ticks += `<span style="left:${100 * v / max}%">${v}</span>`;
+  ax.innerHTML = `<div></div><div class="ticks">${ticks}</div><div></div><div class="cap">mAP@100</div>`;
+  box.appendChild(ax);
+  if (ref) {
+    const line = el("div", "ref", `<span>${ref.label}</span>`);
+    line.style.left = `calc(var(--lab) + var(--g) + (100% - var(--lab) - 2 * var(--g) - 4.2rem) * ${ref.v / max})`;
+    bars.appendChild(line);
+  }
+}
+
+const C = name => `var(--${name})`;
+barChart("fusionChart", {
+  max: 60, step: 10,
+  rows: [
+    { label: "Product", v: 50.09, c: C("fin"), hl: true, tip: "Product of the two scores: 50.09 mAP@100" },
+    { label: "Soft minimum", v: 49.90, c: C("neutral") },
+    { label: "Harmonic mean", v: 39.62, c: C("neutral") },
+    { label: "Minimum", v: 18.22, c: C("neutral") },
+    { label: "Sum", v: 15.84, c: C("neutral"), tip: "Sum of the two scores: 15.84 mAP@100. One strong score can compensate for a failed check." }
+  ]
+});
+
+barChart("ladderChart", {
+  max: 70, step: 10,
+  legend: [[C("idn"), "First stage, training-free (SigLIP2)"], [C("fin"), "Stage 1 + one second-stage verifier"]],
+  ref: { v: 31.64, label: "BASIC 31.64" },
+  rows: [
+    { group: "First stage, built step by step" },
+    { label: "Image similarity only", v: 4.71, c: C("idn") },
+    { label: "Text similarity only", v: 6.82, c: C("idn") },
+    { label: "Sum of both", sub: "with image centering", v: 15.84, c: C("idn") },
+    { label: "Product of both", sub: "raw embeddings", v: 35.57, c: C("idn") },
+    { label: "+ image centering", v: 50.09, c: C("idn"), tip: "Leave-one-instance-out centering: 35.57 to 50.09" },
+    { label: "+ text contextualization", sub: "stage 1, 93.08 Recall@100", v: 59.64, c: C("idn"), hl: true, tip: "Stage 1: 59.64 mAP@100, 60.24 macro, 93.08 Recall@100" },
+    { group: "Second stage on the same top 100" },
+    { label: "+ plain RZEn", sub: "no descriptor", v: 62.54, c: C("fin"), tip: "RZEn image and text scores without the descriptor: 62.54 (+2.90)" },
+    { label: "+ SigLIP1", sub: "a second dual encoder", v: 63.76, c: C("fin"), tip: "Frozen SigLIP1 centered contextualized product: 63.76 (+4.13)" },
+    { label: "+ ILIAS probe", sub: "Route A", v: 66.05, c: C("fin"), tip: "Route A: 66.05 mAP@100, 64.14 macro (+6.41)" },
+    { label: "+ descriptor-guided RZEn", sub: "Route B, final", v: 66.42, c: C("fin"), hl: true, tip: "Route B: 66.42 mAP@100, 65.65 macro (+6.78)" }
+  ]
+});
+
+/* per-query outcome */
+(function outcome() {
+  const parts = [["Improved", 1122, C("hit")], ["Tied", 255, C("neutral")], ["Worse", 506, C("miss")]];
+  const total = 1883, bar = document.getElementById("outcomeBar"), key = document.getElementById("outcomeKey");
+  for (const [name, n, c] of parts) {
+    const d = el("div"); d.style.flex = `${n} 1 0`; d.style.background = c;
+    d.dataset.tip = `${name}: ${n.toLocaleString("en")} of ${total.toLocaleString("en")} queries (${(100 * n / total).toFixed(1)}%)`;
+    bar.appendChild(d);
+    key.appendChild(el("span", "", `<i style="background:${c}"></i><b>${n.toLocaleString("en")}</b>${name.toLowerCase()}`));
+  }
+})();
+
+/* ILIAS held-out domains */
+(function domains() {
+  const rows = [["product", 40.34, 89.16], ["media", 36.99, 82.11], ["fashion", 36.97, 79.09], ["technology", 37.29, 75.32],
+                ["household", 26.77, 71.89], ["toy", 29.71, 71.09], ["art", 22.29, 64.21], ["landmark", 20.75, 53.24]];
+  const box = document.getElementById("domainChart"), max = 100;
+  box.appendChild(el("div", "legend", `<span><i style="background:var(--neutral)"></i>Frozen SigLIP2</span><span><i style="background:var(--fin)"></i>With the linear probe</span>`));
+  const bars = el("div", "bars");
+  bars.style.setProperty("--tick", "20%");
+  for (const [d, a, b] of rows) {
+    const r = el("div", "bar");
+    r.innerHTML = `<div class="l">${d}</div><div class="t"><div class="seg" style="left:${a}%;width:${b - a}%"></div>
+      <div class="dot" style="left:${a}%;background:var(--neutral)"></div><div class="dot" style="left:${b}%;background:var(--fin)"></div></div>
+      <div class="v">${a.toFixed(1)} → ${b.toFixed(1)}</div>`;
+    r.dataset.tip = `${d} held out: ${a.toFixed(2)} frozen, ${b.toFixed(2)} with the probe (+${(b - a).toFixed(2)})`;
+    bars.appendChild(r);
+  }
+  box.appendChild(bars);
+  const ax = el("div", "axis");
+  ax.innerHTML = `<div></div><div class="ticks">${[0, 20, 40, 60, 80, 100].map(v => `<span style="left:${v}%">${v}</span>`).join("")}</div><div></div><div class="cap">mAP@100 on the held-out domain</div>`;
+  box.appendChild(ax);
+})();
+
+/* hover tooltips */
+(function tooltips() {
+  const tip = document.getElementById("tip");
+  document.addEventListener("pointermove", e => {
+    const t = e.target.closest("[data-tip]");
+    if (!t) { tip.hidden = true; return; }
+    tip.textContent = t.dataset.tip; tip.hidden = false;
+    const w = tip.offsetWidth, x = Math.min(e.clientX + 14, window.innerWidth - w - 10);
+    tip.style.left = x + "px"; tip.style.top = (e.clientY + 16) + "px";
+  });
+  document.addEventListener("pointerleave", () => { tip.hidden = true; });
+  window.addEventListener("scroll", () => { tip.hidden = true; }, { passive: true });
+})();
+</script>
+</body>
+</html>
